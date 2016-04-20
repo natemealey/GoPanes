@@ -5,42 +5,6 @@ import (
 	"strconv"
 )
 
-/* how does a GoPane work?
-well, a lot like tmux, but within go
-a GoPane lets you split it horizontally or vertically
-so a GoPane has either zero or two elements, depending on if it's split or not
-if there's zero, then it's a single element, and thus a complete pane, and it
-  can be printed to directly
-if there are two, the pane is split
-a print to a parent will print to the first element of each child until it reaches the bottom
-all GoPanes have a width and height
-the width and height of the topmost parent will be the width and height of the window
-Conceptually, the GoPane structure is a complete binary tree
-
-What's supported?
-- ANSI terminals (just those for now)
-- text wrapping, because we don't want to lose data
-- title overflow
-- vertical overflow (will scroll up and down)
-	* TODO this is a later feature
-- responsive resize detection (using polling)
-	* TODO this is a later feature
-	* when resized, panes will be resized by percentages
-		- TODO unless otherwise specified?
-- custom coloring (including dividers)
-
-What's not supported?
-- padding or margins or any such styles - this is not a window manager
-- non-ANSI terminals - ANSI is enough for now!
-
-Why does this exist?
-- I don't like the existing solutions - I don't want a window manager or anything
-	heavyweight
-- I think tmux is incredibly useful and it'd be great to have inside my Go projects
-- The terminal is great and this makes using a minimalistic terminal UI in Go very easy
-- I think Go is fun and I like writing things in it
-*/
-
 type GoPaneUi struct {
 	rootPane *GoPane
 }
