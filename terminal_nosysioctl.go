@@ -1,7 +1,6 @@
 // +build windows plan9 solaris
-// from github.com/buger/goterm
 
-package goterm
+package gopanes
 
 func getWinsize() (*winsize, error) {
 	ws := new(winsize)

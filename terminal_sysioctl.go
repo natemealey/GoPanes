@@ -1,5 +1,4 @@
 // +build !windows,!plan9,!solaris
-// from github.com/buger/goterm
 
 package gopanes
 
