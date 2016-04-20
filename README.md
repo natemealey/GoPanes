@@ -29,3 +29,5 @@ the width and height of the topmost parent will be the width and height of the w
 - I think tmux is incredibly useful and it'd be great to have inside my Go projects
 - The terminal is great and this makes using a minimalistic terminal UI in Go very easy
 - I think Go is fun and I like writing things in it, even if this isn't 100% necessary
+
+##This is in a very pre-alpha (pretty much toy) state right now, definitely don't use it for anything that could touch production content.
