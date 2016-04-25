@@ -42,6 +42,10 @@ func (gu *GoPaneUi) Refresh() {
 	gu.Root.Refresh()
 }
 
+func (gu *GoPaneUi) Clear() {
+	fmt.Printf("\033[H\033[2J")
+}
+
 // splits are
 type GoPane struct {
 	First         *GoPane
@@ -178,6 +182,8 @@ func (gp *GoPane) Refresh() {
 	if gp.isSplit() {
 		// in-order traversal of child panes
 		gp.First.Refresh()
+		// TODO support more terminals
+		fmt.Printf("\0337")
 		// render line
 		if gp.isVertical {
 			for y := gp.y; y <= gp.y+gp.height; y++ {
@@ -190,6 +196,8 @@ func (gp *GoPane) Refresh() {
 				fmt.Printf("-") //TODO custom border
 			}
 		}
+		// restore cursor position
+		fmt.Printf("\0338")
 		gp.Second.Refresh()
 	} else {
 		// it's a leaf pane, so render its content
@@ -218,7 +226,7 @@ func (gp *GoPane) Refresh() {
 		}
 		// save original position
 		// TODO support more terminals
-		fmt.Printf("\033[s")
+		fmt.Printf("\0337")
 		// move the cursor to the output start
 		moveCursor(gp.x, gp.y)
 		// then, output the buffer (or at least, all that can fit)
@@ -240,6 +248,6 @@ func (gp *GoPane) Refresh() {
 			fmt.Println(spaceRow)
 		}
 		// restore cursor position
-		fmt.Printf("\033[u")
+		fmt.Printf("\0338")
 	}
 }
