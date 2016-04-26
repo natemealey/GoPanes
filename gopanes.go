@@ -150,10 +150,7 @@ func (gp *GoPane) Clear() {
 
 // uses ANSI codes to move the cursor to the given point
 func moveCursor(x int, y int) {
-	// TODO for 1-indexed ANSI rows/cols
-	x++
-	y++
-	fmt.Printf("\033[" + strconv.Itoa(y) + ";" + strconv.Itoa(x) + "H")
+	fmt.Printf("\033[" + strconv.Itoa(y+1) + ";" + strconv.Itoa(x+1) + "H")
 }
 
 func (gp *GoPane) getCursorPosition() (int, int) {
@@ -169,9 +166,17 @@ func (gp *GoPane) Focus() {
 // TODO move somewhere useful possibly
 func getOutputWidth(src string) int {
 	width := 0
+	ansiFlag := false
 	for _, char := range src {
-		if strconv.IsPrint(char) {
+		if strconv.IsPrint(char) && !ansiFlag {
 			width++
+		} else if char == '\033' {
+			// handle ansi escape codes
+			ansiFlag = true
+		} else if ansiFlag {
+			if char == 'm' { //TODO do all ANSI codes end in M
+				ansiFlag = false
+			}
 		}
 	}
 	return width
@@ -193,7 +198,7 @@ func (gp *GoPane) Refresh() {
 		} else {
 			for x := gp.x; x <= gp.x+gp.width; x++ {
 				moveCursor(x, gp.y+gp.splitLocation-1)
-				fmt.Printf("-") //TODO custom border
+				fmt.Printf("─") //TODO custom border
 			}
 		}
 		// restore cursor position
@@ -205,11 +210,19 @@ func (gp *GoPane) Refresh() {
 		buf := make([]string, len(gp.content))
 		col := 0
 		bufRow := 0
+		ansiFlag := false
 		for _, row := range gp.content {
 			for _, char := range row {
-				if strconv.IsPrint(char) {
+				if strconv.IsPrint(char) && !ansiFlag {
 					// if it's not printable, don't add it to the width
 					col++
+				} else if char == '\033' {
+					// handle ansi escape codes
+					ansiFlag = true
+				} else if ansiFlag {
+					if char == 'm' { //TODO do all ANSI codes end in M
+						ansiFlag = false
+					}
 				}
 				// handle line wrapping
 				if col >= gp.width || char == '\n' {
