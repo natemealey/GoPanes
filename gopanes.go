@@ -2,16 +2,20 @@ package gopanes
 
 import (
 	"fmt"
+	"github.com/nsf/termbox-go"
 	"strconv"
-	"strings"
+	"sync"
 )
 
-// from github.com/buger/goterm
-type winsize struct {
-	Row    uint16
-	Col    uint16
-	Xpixel uint16
-	Ypixel uint16
+const tcd = termbox.ColorDefault
+
+// TODO is there a better place to put this?
+var termboxMutex = &sync.Mutex{}
+
+func TermboxSafeFlush() {
+	termboxMutex.Lock()
+	termbox.Flush()
+	termboxMutex.Unlock()
 }
 
 type GoPaneUi struct {
@@ -19,31 +23,24 @@ type GoPaneUi struct {
 }
 
 func (gu *GoPaneUi) getWindowWidth() int {
-	ws, err := getWinsize()
+	x, _ := termbox.Size()
 
-	if err != nil {
-		return -1
-	}
-
-	return int(ws.Col)
+	return x
 }
 
 func (gu *GoPaneUi) getWindowHeight() int {
-	ws, err := getWinsize()
+	_, y := termbox.Size()
 
-	if err != nil {
-		return -1
-	}
-
-	return int(ws.Row)
+	return y
 }
 
 func (gu *GoPaneUi) Refresh() {
 	gu.Root.Refresh()
 }
 
-func (gu *GoPaneUi) Clear() {
-	fmt.Printf("\033[H\033[2J")
+// Close MUST be called on program exit to clean up after termbox
+func (gu *GoPaneUi) Close() {
+	termbox.Close()
 }
 
 // splits are
@@ -57,6 +54,7 @@ type GoPane struct {
 	width         int
 	height        int
 	content       []string
+	editBox       *EditBox
 }
 
 func NewGoPane(width int, height int, x int, y int) *GoPane {
@@ -75,6 +73,8 @@ func NewGoPane(width int, height int, x int, y int) *GoPane {
 func NewGoPaneUi() *GoPaneUi {
 	var newUi GoPaneUi
 
+	termbox.Init()
+
 	newUi.Root = NewGoPane(newUi.getWindowWidth(), newUi.getWindowHeight(), 0, 0)
 
 	return &newUi
@@ -82,6 +82,28 @@ func NewGoPaneUi() *GoPaneUi {
 
 func (gp *GoPane) isSplit() bool {
 	return gp.First != nil && gp.Second != nil
+}
+
+func (gp *GoPane) IsEditable() bool {
+	return gp.editBox != nil
+}
+
+func (gp *GoPane) MakeEditable() {
+	gp.editBox = NewEditBox(gp.x, gp.y, gp.width, gp.height)
+}
+
+func (gp *GoPane) IsAlive() bool {
+	// if it's editable, return edit alive state, otherwise true
+	return (gp.IsEditable() && gp.editBox.Alive()) || !gp.IsEditable()
+}
+
+// If the goPane is editable, get the next line from it
+func (gp *GoPane) GetLine() string {
+	if gp.IsEditable() {
+		return string(gp.editBox.GetLine())
+	}
+	// TODO should this have a better failure mode?
+	return ""
 }
 
 func (gp *GoPane) Info() {
@@ -153,14 +175,9 @@ func moveCursor(x int, y int) {
 	fmt.Printf("\033[" + strconv.Itoa(y+1) + ";" + strconv.Itoa(x+1) + "H")
 }
 
-func (gp *GoPane) getCursorPosition() (int, int) {
-
-	return 0, 0
-}
-
 func (gp *GoPane) Focus() {
 	// move the cursor to the output start
-	moveCursor(gp.x, gp.y)
+	termbox.SetCursor(gp.x, gp.y)
 }
 
 // TODO move somewhere useful possibly
@@ -187,22 +204,16 @@ func (gp *GoPane) Refresh() {
 	if gp.isSplit() {
 		// in-order traversal of child panes
 		gp.First.Refresh()
-		// TODO support more terminals
-		fmt.Printf("\0337")
-		// render line
+		// TODO custom borders
 		if gp.isVertical {
 			for y := gp.y; y <= gp.y+gp.height; y++ {
-				moveCursor(gp.x+gp.splitLocation-1, y)
-				fmt.Printf("|") //TODO custom border
+				termbox.SetCell(gp.x+gp.splitLocation-1, y, '|', termbox.ColorWhite, tcd)
 			}
 		} else {
 			for x := gp.x; x <= gp.x+gp.width; x++ {
-				moveCursor(x, gp.y+gp.splitLocation-1)
-				fmt.Printf("─") //TODO custom border
+				termbox.SetCell(x, gp.y+gp.splitLocation-1, '─', termbox.ColorWhite, tcd)
 			}
 		}
-		// restore cursor position
-		fmt.Printf("\0338")
 		gp.Second.Refresh()
 	} else {
 		// it's a leaf pane, so render its content
@@ -219,10 +230,14 @@ func (gp *GoPane) Refresh() {
 				} else if char == '\033' {
 					// handle ansi escape codes
 					ansiFlag = true
+					// TODO wipes out ANSI colors
+					continue
 				} else if ansiFlag {
 					if char == 'm' { //TODO do all ANSI codes end in M
 						ansiFlag = false
 					}
+					// TODO wipes out ANSI colors
+					continue
 				}
 				// handle line wrapping
 				if col >= gp.width || char == '\n' {
@@ -237,30 +252,25 @@ func (gp *GoPane) Refresh() {
 			col = 0
 			bufRow++
 		}
-		// save original position
-		// TODO support more terminals
-		fmt.Printf("\0337")
-		// move the cursor to the output start
-		moveCursor(gp.x, gp.y)
-		// then, output the buffer (or at least, all that can fit)
+		// set the cells in the termbox buffer (or at least, all that can fit)
 		startRow := len(buf) - gp.height
 		if startRow < 0 {
 			startRow = 0
 		}
-		for _, row := range buf[startRow:] {
-			spaces := ""
-
-			for spaceStart := getOutputWidth(row); spaceStart < gp.width; spaceStart++ {
-				spaces += " "
+		for rownum, row := range buf[startRow:] {
+			for charnum, char := range row {
+				termbox.SetCell(gp.x+charnum, gp.y+rownum, char, tcd, tcd)
 			}
-			fmt.Println(row + spaces)
+			for spaceStart := getOutputWidth(row); spaceStart < gp.width; spaceStart++ {
+				termbox.SetCell(gp.x+spaceStart, gp.y+rownum, ' ', tcd, tcd)
+			}
 		}
-		// output all empty rows as spaces
-		spaceRow := strings.Repeat(" ", gp.width)
-		for row := 0; row < (gp.height - len(buf)); row++ {
-			fmt.Println(spaceRow)
+		// set all empty rows as spaces
+		for row := len(buf); row < gp.height; row++ {
+			for idx := 0; idx < gp.width; idx++ {
+				termbox.SetCell(gp.x+idx, gp.y+row, ' ', tcd, tcd)
+			}
 		}
-		// restore cursor position
-		fmt.Printf("\0338")
 	}
+	TermboxSafeFlush()
 }
