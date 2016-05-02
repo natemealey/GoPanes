@@ -68,7 +68,7 @@ func NewGoPane(width int, height int, x int, y int) *GoPane {
 }
 
 // Creates a new root UI. This should only be used once in a program,
-// when initializing the GoPane UI
+//   when initializing the GoPane UI
 // TODO should this be a singleton?
 func NewGoPaneUi() *GoPaneUi {
 	var newUi GoPaneUi
@@ -117,19 +117,19 @@ func (gp *GoPane) Info() {
 
 // splits a pane horizonally at the given line
 func (gp *GoPane) Horiz(y int) bool {
-	// negative values split from bottom
-	// TODO make this work better when resizing
-	if y < 0 {
-		y = gp.height + y
-	}
+	// note: negative values split from bottom
 	// just refuse to split if it's invalid
-	if y <= 0 || y >= gp.height {
+	if y == 0 || y >= gp.height || y*-1 > gp.height {
 		return false
 	}
 	gp.isVertical = false
 	gp.splitLocation = y
-	gp.First = NewGoPane(gp.width, y-1, gp.x, gp.y)
-	gp.Second = NewGoPane(gp.width, gp.height-(y+1), gp.x, gp.y+y)
+	absSplit := y
+	if absSplit < 0 {
+		absSplit += gp.height
+	}
+	gp.First = NewGoPane(gp.width, absSplit-1, gp.x, gp.y)
+	gp.Second = NewGoPane(gp.width, gp.height-(absSplit+1), gp.x, gp.y+absSplit)
 	// the First pane inherits the split content
 	gp.First.content = gp.content
 	gp.content = nil
@@ -138,19 +138,19 @@ func (gp *GoPane) Horiz(y int) bool {
 
 // splits a pane vertically at the given line
 func (gp *GoPane) Vert(x int) bool {
-	// negative values split from right
-	// TODO make this work better when resizing
-	if x < 0 {
-		x = gp.width + x
-	}
+	// note: negative values split from right
 	// just refuse to split if it's invalid
-	if x <= 0 || x >= gp.width {
+	if x == 0 || x >= gp.width || x*-1 > gp.width {
 		return false
 	}
 	gp.isVertical = true
 	gp.splitLocation = x
-	gp.First = NewGoPane(x, gp.height, gp.x, gp.y)
-	gp.Second = NewGoPane(gp.width-(x+1), gp.height, gp.x+x+1, gp.y)
+	absSplit := x
+	if absSplit < 0 {
+		absSplit += gp.width
+	}
+	gp.First = NewGoPane(absSplit, gp.height, gp.x, gp.y)
+	gp.Second = NewGoPane(gp.width-(absSplit+1), gp.height, gp.x+absSplit+1, gp.y)
 	// the First pane inherits the split content
 	gp.First.content = gp.content
 	gp.content = nil
@@ -168,11 +168,6 @@ func (gp *GoPane) AddLine(line string) {
 // deletes all content
 func (gp *GoPane) Clear() {
 	gp.content = nil
-}
-
-// uses ANSI codes to move the cursor to the given point
-func moveCursor(x int, y int) {
-	fmt.Printf("\033[" + strconv.Itoa(y+1) + ";" + strconv.Itoa(x+1) + "H")
 }
 
 func (gp *GoPane) Focus() {
@@ -206,12 +201,20 @@ func (gp *GoPane) Refresh() {
 		gp.First.Refresh()
 		// TODO custom borders
 		if gp.isVertical {
+			absSplit := gp.splitLocation
+			if gp.splitLocation < 0 {
+				absSplit = gp.splitLocation + gp.width
+			}
 			for y := gp.y; y <= gp.y+gp.height; y++ {
-				termbox.SetCell(gp.x+gp.splitLocation-1, y, '|', termbox.ColorWhite, tcd)
+				termbox.SetCell(gp.x+absSplit-1, y, '|', termbox.ColorWhite, tcd)
 			}
 		} else {
+			absSplit := gp.splitLocation
+			if gp.splitLocation < 0 {
+				absSplit = gp.splitLocation + gp.height
+			}
 			for x := gp.x; x <= gp.x+gp.width; x++ {
-				termbox.SetCell(x, gp.y+gp.splitLocation-1, '─', termbox.ColorWhite, tcd)
+				termbox.SetCell(x, gp.y+absSplit-1, '─', termbox.ColorWhite, tcd)
 			}
 		}
 		gp.Second.Refresh()
@@ -272,5 +275,5 @@ func (gp *GoPane) Refresh() {
 			}
 		}
 	}
-	TermboxSafeFlush()
+	termbox.Flush()
 }

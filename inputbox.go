@@ -72,6 +72,8 @@ const tabstop_length = 8
 type EditBox struct {
 	text              []byte
 	output            chan []byte // TODO can this be merged with text?
+	history           [][]byte
+	history_offset    int
 	x                 int
 	y                 int
 	width             int
@@ -232,10 +234,29 @@ func (eb *EditBox) CursorX() int {
 	return eb.cursor_voffset - eb.line_voffset
 }
 
+func (eb *EditBox) HistoryUp() {
+	// if we're at the top, don't go any further
+	if eb.history_offset >= len(eb.history) {
+		return
+	}
+	eb.history_offset++
+	eb.text = eb.history[len(eb.history)-eb.history_offset]
+}
+
+func (eb *EditBox) HistoryDown() {
+	// if we're at the bottom, give a blank line
+	if eb.history_offset <= 1 {
+		eb.text = eb.text[:0]
+		return
+	}
+	eb.history_offset--
+	eb.text = eb.history[len(eb.history)-eb.history_offset]
+}
+
 func (eb *EditBox) SubmitLine() {
+	eb.history = append(eb.history, eb.text)
 	eb.output <- eb.text
 	eb.text = eb.text[:0]
-
 }
 
 func (eb *EditBox) GetLine() []byte {
@@ -281,6 +302,12 @@ mainloop:
 			case termbox.KeyEnter:
 				eb.SubmitLine()
 				eb.MoveCursorToBeginningOfTheLine()
+			case termbox.KeyArrowUp:
+				eb.HistoryUp()
+				eb.MoveCursorToEndOfTheLine()
+			case termbox.KeyArrowDown:
+				eb.HistoryDown()
+				eb.MoveCursorToEndOfTheLine()
 			default:
 				if ev.Ch != 0 {
 					eb.InsertRune(ev.Ch)
