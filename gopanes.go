@@ -53,7 +53,7 @@ type GoPane struct {
 	y             int
 	width         int
 	height        int
-	content       []string
+	content       [][]ColorStr
 	editBox       *EditBox
 }
 
@@ -157,11 +157,11 @@ func (gp *GoPane) Vert(x int) bool {
 	return true
 }
 
-func (gp *GoPane) AddLine(line string) {
+func (gp *GoPane) AddLine(colorStrs []ColorStr) {
 	if gp.isSplit() {
-		gp.First.AddLine(line)
+		gp.First.AddLine(colorStrs)
 	} else {
-		gp.content = append(gp.content, line)
+		gp.content = append(gp.content, colorStrs)
 	}
 }
 
@@ -176,19 +176,12 @@ func (gp *GoPane) Focus() {
 }
 
 // TODO move somewhere useful possibly
-func getOutputWidth(src string) int {
+func getOutputWidth(src []ColorRune) int {
 	width := 0
-	ansiFlag := false
-	for _, char := range src {
-		if strconv.IsPrint(char) && !ansiFlag {
+	for _, colorRune := range src {
+		// TODO tab handling
+		if strconv.IsPrint(colorRune.r) {
 			width++
-		} else if char == '\033' {
-			// handle ansi escape codes
-			ansiFlag = true
-		} else if ansiFlag {
-			if char == 'm' { //TODO do all ANSI codes end in M
-				ansiFlag = false
-			}
 		}
 	}
 	return width
@@ -221,35 +214,26 @@ func (gp *GoPane) Refresh() {
 	} else {
 		// it's a leaf pane, so render its content
 		// First, create a byte buffer of the output
-		buf := make([]string, len(gp.content))
+		buf := make([][]ColorRune, len(gp.content))
 		col := 0
 		bufRow := 0
-		ansiFlag := false
 		for _, row := range gp.content {
-			for _, char := range row {
-				if strconv.IsPrint(char) && !ansiFlag {
-					// if it's not printable, don't add it to the width
-					col++
-				} else if char == '\033' {
-					// handle ansi escape codes
-					ansiFlag = true
-					// TODO wipes out ANSI colors
-					continue
-				} else if ansiFlag {
-					if char == 'm' { //TODO do all ANSI codes end in M
-						ansiFlag = false
+			for _, colorStr := range row {
+				for _, char := range colorStr.str {
+					if strconv.IsPrint(char) {
+						// if it's not printable, don't add it to the width
+						col++
 					}
-					// TODO wipes out ANSI colors
-					continue
-				}
-				// handle line wrapping
-				if col >= gp.width || char == '\n' {
-					col = 0
-					bufRow++
-					buf = append(buf, "")
-				}
-				if char != '\n' {
-					buf[bufRow] += string(char)
+					// handle line wrapping
+					if col >= gp.width || char == '\n' {
+						col = 0
+						bufRow++
+						buf = append(buf, make([]ColorRune, 0))
+					}
+					if char != '\n' {
+						buf[bufRow] = append(buf[bufRow], ColorRune{
+							r: char, fg: colorStr.fg, bg: colorStr.bg})
+					}
 				}
 			}
 			col = 0
@@ -261,8 +245,8 @@ func (gp *GoPane) Refresh() {
 			startRow = 0
 		}
 		for rownum, row := range buf[startRow:] {
-			for charnum, char := range row {
-				termbox.SetCell(gp.x+charnum, gp.y+rownum, char, tcd, tcd)
+			for charnum, colorRune := range row {
+				termbox.SetCell(gp.x+charnum, gp.y+rownum, colorRune.r, colorRune.fg, colorRune.bg)
 			}
 			for spaceStart := getOutputWidth(row); spaceStart < gp.width; spaceStart++ {
 				termbox.SetCell(gp.x+spaceStart, gp.y+rownum, ' ', tcd, tcd)
@@ -275,5 +259,5 @@ func (gp *GoPane) Refresh() {
 			}
 		}
 	}
-	termbox.Flush()
+	TermboxSafeFlush()
 }
