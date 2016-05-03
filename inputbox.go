@@ -317,6 +317,7 @@ mainloop:
 			panic(ev.Err)
 		}
 		eb.Draw()
+		termbox.SetCursor(eb.CursorX(), eb.y)
 		TermboxSafeFlush()
 	}
 }
@@ -327,6 +328,7 @@ var isInit bool
 func NewEditBox(x, y, width, height int) *EditBox {
 	termbox.SetInputMode(termbox.InputEsc)
 	eb := EditBox{x: x, y: y, width: width, height: height, output: make(chan []byte)}
+	termbox.SetCursor(eb.CursorX(), eb.y)
 	// listen for input
 	if !isInit {
 		go eb.Listen()
