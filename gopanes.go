@@ -89,7 +89,7 @@ func (gp *GoPane) IsEditable() bool {
 }
 
 func (gp *GoPane) MakeEditable() {
-	gp.editBox = NewEditBox(gp.x, gp.y, gp.width, gp.height)
+	gp.editBox = NewEditBox(gp.x, gp.y, gp.width, gp.height, nil)
 }
 
 func (gp *GoPane) IsAlive() bool {
@@ -106,6 +106,11 @@ func (gp *GoPane) GetLine() string {
 	return ""
 }
 
+func (gp *GoPane) ChangePrompt(colorStrs []ColorStr) {
+	if gp.IsEditable() {
+		gp.editBox.ChangePrompt(colorStrs)
+	}
+}
 func (gp *GoPane) Info() {
 	fmt.Printf("Pane is ")
 	if !gp.isVertical {

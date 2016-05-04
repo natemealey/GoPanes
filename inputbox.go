@@ -15,6 +15,15 @@ func tbprint(x, y int, fg, bg termbox.Attribute, msg string) {
 	}
 }
 
+func tbprint_color(x, y int, colorStrs []ColorStr) {
+	for _, colorStr := range colorStrs {
+		for _, c := range colorStr.str {
+			termbox.SetCell(x, y, c, colorStr.fg, colorStr.bg)
+			x += runewidth.RuneWidth(c)
+		}
+	}
+}
+
 func fill(x, y, w, h int, cell termbox.Cell) {
 	for ly := 0; ly < h; ly++ {
 		for lx := 0; lx < w; lx++ {
@@ -73,6 +82,7 @@ type EditBox struct {
 	text              []byte
 	output            chan []byte // TODO can this be merged with text?
 	history           [][]byte
+	prompt            []ColorStr // slice allows for multicolored prompt
 	history_offset    int
 	x                 int
 	y                 int
@@ -85,6 +95,15 @@ type EditBox struct {
 	received_kill_sig bool // if ESC is pressed, lets owner know to quit
 }
 
+func (eb *EditBox) rawPromptText() []byte {
+	var rawPrompt []byte
+	for _, colorStr := range eb.prompt {
+		// append all the bytes of the string
+		rawPrompt = append(rawPrompt, []byte(colorStr.str)...)
+	}
+	return rawPrompt
+}
+
 // Draws the EditBox in the given location, 'h' is not used at the moment
 func (eb *EditBox) Draw() {
 	eb.AdjustVOffset(eb.width)
@@ -92,8 +111,15 @@ func (eb *EditBox) Draw() {
 	const coldef = termbox.ColorDefault
 	fill(eb.x, eb.y, eb.width, eb.height, termbox.Cell{Ch: ' '})
 
+	// render the prompt
+	tbprint_color(eb.x, eb.y, eb.prompt)
+
+	// get prompt dimensions
+	raw_prompt := eb.rawPromptText()
+	prompt_voffset, _ := voffset_coffset(raw_prompt, len(raw_prompt))
+
 	t := eb.text
-	lx := 0
+	lx := prompt_voffset
 	tabstop := 0
 	for {
 		rx := lx - eb.line_voffset
@@ -119,12 +145,12 @@ func (eb *EditBox) Draw() {
 					goto next
 				}
 
-				if rx >= 0 {
+				if rx >= prompt_voffset {
 					termbox.SetCell(eb.x+rx, eb.y, ' ', coldef, coldef)
 				}
 			}
 		} else {
-			if rx >= 0 {
+			if rx >= prompt_voffset {
 				termbox.SetCell(eb.x+rx, eb.y, r, coldef, coldef)
 			}
 			lx += runewidth.RuneWidth(r)
@@ -134,7 +160,7 @@ func (eb *EditBox) Draw() {
 	}
 
 	if eb.line_voffset != 0 {
-		termbox.SetCell(eb.x, eb.y, '←', coldef, coldef)
+		termbox.SetCell(eb.x+prompt_voffset, eb.y, '←', coldef, coldef)
 	}
 }
 
@@ -142,6 +168,7 @@ func (eb *EditBox) Draw() {
 func (eb *EditBox) AdjustVOffset(width int) {
 	ht := preferred_horizontal_threshold
 	max_h_threshold := (width - 1) / 2
+
 	if ht > max_h_threshold {
 		ht = max_h_threshold
 	}
@@ -231,7 +258,11 @@ func (eb *EditBox) InsertRune(r rune) {
 // Please, keep in mind that cursor depends on the value of line_voffset, which
 // is being set on Draw() call, so.. call this method after Draw() one.
 func (eb *EditBox) CursorX() int {
-	return eb.cursor_voffset - eb.line_voffset
+	// get prompt dimensions
+	raw_prompt := eb.rawPromptText()
+	prompt_voffset, _ := voffset_coffset(raw_prompt, len(raw_prompt))
+
+	return prompt_voffset + eb.cursor_voffset - eb.line_voffset
 }
 
 func (eb *EditBox) HistoryUp() {
@@ -263,6 +294,11 @@ func (eb *EditBox) GetLine() []byte {
 	return <-eb.output
 }
 
+func (eb *EditBox) ChangePrompt(prompt []ColorStr) {
+	eb.prompt = prompt
+	eb.Refresh()
+}
+
 func (eb *EditBox) Kill() {
 	eb.output <- nil
 	eb.received_kill_sig = true
@@ -270,6 +306,12 @@ func (eb *EditBox) Kill() {
 
 func (eb *EditBox) Alive() bool {
 	return !eb.received_kill_sig
+}
+
+func (eb *EditBox) Refresh() {
+	eb.Draw()
+	termbox.SetCursor(eb.CursorX(), eb.y)
+	TermboxSafeFlush()
 }
 
 func (eb *EditBox) Listen() {
@@ -316,18 +358,16 @@ mainloop:
 		case termbox.EventError:
 			panic(ev.Err)
 		}
-		eb.Draw()
-		termbox.SetCursor(eb.CursorX(), eb.y)
-		TermboxSafeFlush()
+		eb.Refresh()
 	}
 }
 
 // TODO allow multiple input boxes
 var isInit bool
 
-func NewEditBox(x, y, width, height int) *EditBox {
+func NewEditBox(x, y, width, height int, prompt []ColorStr) *EditBox {
 	termbox.SetInputMode(termbox.InputEsc)
-	eb := EditBox{x: x, y: y, width: width, height: height, output: make(chan []byte)}
+	eb := EditBox{x: x, y: y, width: width, height: height, output: make(chan []byte), prompt: prompt}
 	termbox.SetCursor(eb.CursorX(), eb.y)
 	// listen for input
 	if !isInit {
