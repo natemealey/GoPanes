@@ -48,6 +48,7 @@ type GoPane struct {
 	First         *GoPane
 	Second        *GoPane
 	isVertical    bool
+	isFocused     bool // only unsplit (leaf) panes can be focused
 	splitLocation int
 	x             int
 	y             int
@@ -67,6 +68,35 @@ func NewGoPane(width int, height int, x int, y int) *GoPane {
 		Second: nil}
 }
 
+func (gu *GoPaneUi) GetFocusedPane() *GoPane {
+	return gu.Root.GetFocusedChild()
+}
+
+func (gu *GoPaneUi) Listen() {
+	for {
+		switch ev := termbox.PollEvent(); ev.Type {
+		case termbox.EventKey:
+			// TODO if it's kill signal, just quit
+			// get target pane
+			target := gu.GetFocusedPane()
+			// call pane event handler
+			if target != nil {
+				target.HandleEvent(ev)
+			}
+		case termbox.EventError:
+			panic(ev.Err)
+		}
+	}
+
+}
+
+// This is the ONLY function that should be used to focus a pane
+//  Using an individual pane's focus() will cause inconsistent state, since
+//  it could allow multiple panes to be focused
+func (gu *GoPaneUi) FocusPane(gp *GoPane) {
+	gu.Root.focusChild(gp)
+}
+
 // Creates a new root UI. This should only be used once in a program,
 //   when initializing the GoPane UI
 // TODO should this be a singleton?
@@ -77,11 +107,30 @@ func NewGoPaneUi() *GoPaneUi {
 
 	newUi.Root = NewGoPane(newUi.getWindowWidth(), newUi.getWindowHeight(), 0, 0)
 
+	go newUi.Listen()
+
 	return &newUi
 }
 
 func (gp *GoPane) isSplit() bool {
 	return gp.First != nil && gp.Second != nil
+}
+
+func (gp *GoPane) HandleKey(key termbox.Key) {
+	switch key {
+	case termbox.KeyArrowUp:
+	case termbox.KeyArrowDown:
+	case termbox.KeyArrowLeft:
+	case termbox.KeyArrowRight:
+	}
+}
+
+func (gp *GoPane) HandleEvent(ev termbox.Event) {
+	if gp.IsEditable() {
+		gp.editBox.HandleEvent(ev)
+	} else {
+		gp.HandleKey(ev.Key)
+	}
 }
 
 func (gp *GoPane) IsEditable() bool {
@@ -175,9 +224,54 @@ func (gp *GoPane) Clear() {
 	gp.content = nil
 }
 
-func (gp *GoPane) Focus() {
+func (gp *GoPane) GetFocusedChild() *GoPane {
+	if gp.isSplit() {
+		first := gp.First.GetFocusedChild()
+		if first != nil {
+			return first
+		}
+		return gp.Second.GetFocusedChild()
+	}
+	if gp.isFocused {
+		return gp
+	}
+	return nil
+}
+
+// unfocuses all leaf nodes of gp, and focuses on only the target pane
+func (gp *GoPane) focusChild(target *GoPane) {
+	if gp.isSplit() {
+		gp.First.focusChild(target)
+		gp.Second.focusChild(target)
+	} else if gp == target {
+		gp.focus()
+	} else {
+		gp.unfocus()
+	}
+}
+
+// The focus, focusChild, and unfocus functions are ONLY for the GoPaneUi class to manipulate
+func (gp *GoPane) focus() {
 	// move the cursor to the output start
-	termbox.SetCursor(gp.x, gp.y)
+	if gp.isSplit() {
+		gp.First.focus()
+		gp.Second.unfocus()
+	} else if gp.IsEditable() {
+		gp.editBox.Focus()
+		gp.editBox.Refresh()
+	} else {
+		termbox.SetCursor(gp.x, gp.y)
+	}
+	gp.isFocused = true
+}
+
+func (gp *GoPane) unfocus() {
+	// move the cursor to the output start
+	if gp.IsEditable() {
+		gp.editBox.UnFocus()
+		gp.editBox.Refresh()
+	}
+	gp.isFocused = false
 }
 
 // TODO move somewhere useful possibly

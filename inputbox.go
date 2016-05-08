@@ -93,6 +93,7 @@ type EditBox struct {
 	cursor_voffset    int  // visual cursor offset in termbox cells
 	cursor_coffset    int  // cursor offset in unicode code points
 	received_kill_sig bool // if ESC is pressed, lets owner know to quit
+	isFocused         bool
 }
 
 func (eb *EditBox) rawPromptText() []byte {
@@ -105,6 +106,8 @@ func (eb *EditBox) rawPromptText() []byte {
 }
 
 // Draws the EditBox in the given location, 'h' is not used at the moment
+// TODO fix issue with prompt fragments remaining when a redraw makes it
+//  shorter
 func (eb *EditBox) Draw() {
 	eb.AdjustVOffset(eb.width)
 
@@ -158,6 +161,7 @@ func (eb *EditBox) Draw() {
 	next:
 		t = t[size:]
 	}
+	// TODO fill in blank space so prompt resizing works
 
 	if eb.line_voffset != 0 {
 		termbox.SetCell(eb.x+prompt_voffset, eb.y, '←', coldef, coldef)
@@ -308,73 +312,66 @@ func (eb *EditBox) Alive() bool {
 	return !eb.received_kill_sig
 }
 
+func (eb *EditBox) Focus() {
+	eb.isFocused = true
+}
+
+func (eb *EditBox) UnFocus() {
+	eb.isFocused = false
+}
+
 func (eb *EditBox) Refresh() {
 	eb.Draw()
-	termbox.SetCursor(eb.CursorX(), eb.y)
+	if eb.isFocused {
+		termbox.SetCursor(eb.CursorX(), eb.y)
+	}
 	TermboxSafeFlush()
 }
 
-func (eb *EditBox) Listen() {
-mainloop:
-	for {
-		switch ev := termbox.PollEvent(); ev.Type {
-		case termbox.EventKey:
-			switch ev.Key {
-			case termbox.KeyEsc:
-				eb.Kill()
-				break mainloop
-			case termbox.KeyArrowLeft, termbox.KeyCtrlB:
-				eb.MoveCursorOneRuneBackward()
-			case termbox.KeyArrowRight, termbox.KeyCtrlF:
-				eb.MoveCursorOneRuneForward()
-			case termbox.KeyBackspace, termbox.KeyBackspace2:
-				eb.DeleteRuneBackward()
-			case termbox.KeyDelete, termbox.KeyCtrlD:
-				eb.DeleteRuneForward()
-			case termbox.KeyTab:
-				eb.InsertRune('\t')
-			case termbox.KeySpace:
-				eb.InsertRune(' ')
-			case termbox.KeyCtrlK:
-				eb.DeleteTheRestOfTheLine()
-			case termbox.KeyHome, termbox.KeyCtrlA:
-				eb.MoveCursorToBeginningOfTheLine()
-			case termbox.KeyEnd, termbox.KeyCtrlE:
-				eb.MoveCursorToEndOfTheLine()
-			case termbox.KeyEnter:
-				eb.SubmitLine()
-				eb.MoveCursorToBeginningOfTheLine()
-			case termbox.KeyArrowUp:
-				eb.HistoryUp()
-				eb.MoveCursorToEndOfTheLine()
-			case termbox.KeyArrowDown:
-				eb.HistoryDown()
-				eb.MoveCursorToEndOfTheLine()
-			default:
-				if ev.Ch != 0 {
-					eb.InsertRune(ev.Ch)
-				}
-			}
-		case termbox.EventError:
-			panic(ev.Err)
+func (eb *EditBox) HandleEvent(ev termbox.Event) {
+	switch ev.Key {
+	case termbox.KeyEsc: //TODO this system is basically obselete now
+		eb.Kill()
+		return
+	case termbox.KeyArrowLeft, termbox.KeyCtrlB:
+		eb.MoveCursorOneRuneBackward()
+	case termbox.KeyArrowRight, termbox.KeyCtrlF:
+		eb.MoveCursorOneRuneForward()
+	case termbox.KeyBackspace, termbox.KeyBackspace2:
+		eb.DeleteRuneBackward()
+	case termbox.KeyDelete, termbox.KeyCtrlD:
+		eb.DeleteRuneForward()
+	case termbox.KeyTab:
+		eb.InsertRune('\t')
+	case termbox.KeySpace:
+		eb.InsertRune(' ')
+	case termbox.KeyCtrlK:
+		eb.DeleteTheRestOfTheLine()
+	case termbox.KeyHome, termbox.KeyCtrlA:
+		eb.MoveCursorToBeginningOfTheLine()
+	case termbox.KeyEnd, termbox.KeyCtrlE:
+		eb.MoveCursorToEndOfTheLine()
+	case termbox.KeyEnter:
+		eb.SubmitLine()
+		eb.MoveCursorToBeginningOfTheLine()
+	case termbox.KeyArrowUp:
+		eb.HistoryUp()
+		eb.MoveCursorToEndOfTheLine()
+	case termbox.KeyArrowDown:
+		eb.HistoryDown()
+		eb.MoveCursorToEndOfTheLine()
+	default:
+		if ev.Ch != 0 {
+			eb.InsertRune(ev.Ch)
 		}
-		eb.Refresh()
 	}
+	eb.Refresh()
 }
-
-// TODO allow multiple input boxes
-var isInit bool
 
 func NewEditBox(x, y, width, height int, prompt []ColorStr) *EditBox {
 	termbox.SetInputMode(termbox.InputEsc)
 	eb := EditBox{x: x, y: y, width: width, height: height, output: make(chan []byte), prompt: prompt}
-	termbox.SetCursor(eb.CursorX(), eb.y)
+	eb.Draw()
 	// listen for input
-	if !isInit {
-		go eb.Listen()
-	} else {
-		panic("Can't initialize more than one EditBox!")
-	}
-	isInit = true
 	return &eb
 }
