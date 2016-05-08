@@ -73,13 +73,23 @@ func (gu *GoPaneUi) GetFocusedPane() *GoPane {
 }
 
 func (gu *GoPaneUi) Listen() {
+	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
 	for {
 		switch ev := termbox.PollEvent(); ev.Type {
+		case termbox.EventMouse:
+			// focus on clicked panes
+			if ev.Key == termbox.MouseRelease {
+				target := gu.GetTargetPane(ev.MouseX, ev.MouseY)
+				if target != nil {
+					gu.FocusPane(target)
+				}
+			}
 		case termbox.EventKey:
 			// TODO if it's kill signal, just quit
 			// get target pane
 			target := gu.GetFocusedPane()
 			// call pane event handler
+			// TODO filter out mouse event escape sequences
 			if target != nil {
 				target.HandleEvent(ev)
 			}
@@ -95,6 +105,10 @@ func (gu *GoPaneUi) Listen() {
 //  it could allow multiple panes to be focused
 func (gu *GoPaneUi) FocusPane(gp *GoPane) {
 	gu.Root.focusChild(gp)
+}
+
+func (gu *GoPaneUi) GetTargetPane(x, y int) *GoPane {
+	return gu.Root.childInBounds(x, y)
 }
 
 // Creates a new root UI. This should only be used once in a program,
@@ -114,6 +128,26 @@ func NewGoPaneUi() *GoPaneUi {
 
 func (gp *GoPane) isSplit() bool {
 	return gp.First != nil && gp.Second != nil
+}
+
+// returns the child that is in the given bounds, or nil if none exists
+func (gp *GoPane) childInBounds(x, y int) *GoPane {
+	if gp.isSplit() {
+		first := gp.First.childInBounds(x, y)
+		if first != nil {
+			return first
+		}
+		return gp.Second.childInBounds(x, y)
+	} else {
+		if gp.IsInBounds(x, y) {
+			return gp
+		}
+		return nil
+	}
+}
+
+func (gp *GoPane) IsInBounds(x, y int) bool {
+	return (x >= gp.x && x < gp.x+gp.width) && (y >= gp.y && y < gp.y+gp.height)
 }
 
 func (gp *GoPane) HandleKey(key termbox.Key) {

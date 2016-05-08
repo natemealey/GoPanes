@@ -369,7 +369,6 @@ func (eb *EditBox) HandleEvent(ev termbox.Event) {
 }
 
 func NewEditBox(x, y, width, height int, prompt []ColorStr) *EditBox {
-	termbox.SetInputMode(termbox.InputEsc)
 	eb := EditBox{x: x, y: y, width: width, height: height, output: make(chan []byte), prompt: prompt}
 	eb.Draw()
 	// listen for input
