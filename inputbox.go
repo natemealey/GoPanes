@@ -123,9 +123,10 @@ func (eb *EditBox) Draw() {
 
 	t := eb.text
 	lx := prompt_voffset
+	rx := 0
 	tabstop := 0
 	for {
-		rx := lx - eb.line_voffset
+		rx = lx - eb.line_voffset
 		if len(t) == 0 {
 			break
 		}
@@ -160,6 +161,11 @@ func (eb *EditBox) Draw() {
 		}
 	next:
 		t = t[size:]
+	}
+	if rx < eb.width {
+		for ; rx < eb.width; rx++ {
+			termbox.SetCell(eb.x+rx, eb.y, ' ', coldef, coldef)
+		}
 	}
 	// TODO fill in blank space so prompt resizing works
 
