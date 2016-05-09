@@ -72,8 +72,69 @@ func (gu *GoPaneUi) GetFocusedPane() *GoPane {
 	return gu.Root.GetFocusedChild()
 }
 
+func (gu *GoPaneUi) MoveUp(target *GoPane) {
+	// find the pane above the given pane
+	gu.FocusPane(gu.Root.First)
+}
+
+func (gu *GoPaneUi) MoveDown(target *GoPane) {
+	// find the pane above the given pane
+	gu.FocusPane(gu.Root.Second)
+}
+
+func (gu *GoPaneUi) MoveLeft(target *GoPane) {}
+
+func (gu *GoPaneUi) MoveRight(target *GoPane) {}
+
+func (gu *GoPaneUi) ResizeUp(target *GoPane) {}
+
+func (gu *GoPaneUi) ResizeDown(target *GoPane) {}
+
+func (gu *GoPaneUi) ResizeLeft(target *GoPane) {}
+
+func (gu *GoPaneUi) ResizeRight(target *GoPane) {}
+
+// all possible functions to do after a prefix
+// TODO make these customizable
+func (gu *GoPaneUi) HandleCommand(ev termbox.Event) {
+	target := gu.GetFocusedPane()
+	if target == nil {
+		return // TODO error message?
+	}
+	switch ev.Key {
+	case termbox.KeyArrowUp: // move up one pane
+		gu.MoveUp(target)
+	case termbox.KeyArrowDown: // move down one pane
+		gu.MoveDown(target)
+	case termbox.KeyArrowLeft: // move left one pane
+		gu.MoveLeft(target)
+	case termbox.KeyArrowRight: // move right one pane
+		gu.MoveRight(target)
+	default:
+		switch ev.Ch {
+		case 'k':
+			gu.MoveUp(target)
+		case 'j':
+			gu.MoveDown(target)
+		case 'l':
+			gu.MoveLeft(target)
+		case 'h':
+			gu.MoveRight(target)
+		case 'K':
+			gu.ResizeUp(target)
+		case 'J':
+			gu.ResizeDown(target)
+		case 'L':
+			gu.ResizeLeft(target)
+		case 'H':
+			gu.ResizeRight(target)
+		}
+	}
+}
+
 func (gu *GoPaneUi) Listen() {
 	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
+	var prefix bool
 	for {
 		switch ev := termbox.PollEvent(); ev.Type {
 		case termbox.EventMouse:
@@ -86,12 +147,19 @@ func (gu *GoPaneUi) Listen() {
 			}
 		case termbox.EventKey:
 			// TODO if it's kill signal, just quit
-			// get target pane
-			target := gu.GetFocusedPane()
-			// call pane event handler
-			// TODO filter out mouse event escape sequences
-			if target != nil {
-				target.HandleEvent(ev)
+			if prefix {
+				gu.HandleCommand(ev)
+				prefix = false
+			} else if ev.Key == termbox.KeyCtrlG { // TODO custom prefix
+				prefix = true
+			} else {
+				// get target pane
+				target := gu.GetFocusedPane()
+				// call pane event handler
+				// TODO filter out mouse event escape sequences
+				if target != nil {
+					target.HandleEvent(ev)
+				}
 			}
 		case termbox.EventError:
 			panic(ev.Err)
